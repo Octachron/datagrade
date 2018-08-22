@@ -27,9 +27,10 @@ let ( .%[] ) tbl i = match tbl with
   | Rows x -> x.(i)
   | Columns x -> row_of_columns x i
 
+type ('a,'b) p = ('a,'b) Hlist.pair
 type (_,_) index =
-  | Z: ('a * 'b , 'a) index
-  | S: ('s,'r) index -> ( _ * 's, 'r) index
+  | Z: (('a, 'b) p , 'a) index
+  | S: ('s,'r) index -> ( (_ , 's) p, 'r) index
 
 type empty = |
 
@@ -46,7 +47,7 @@ let ( .%{}) m n = match m with
   | Columns cols -> Cross.map {Cross.f=(fun x -> x.(n))} cols
 
 
-let take_col: type a b c.  ( (a * b) * c) Row.t array -> a array * (b * c) Row.t array  =
+let take_col: type a b c.  ( (a, b) p * c) Row.t array -> a array * (b * c) Row.t array  =
   fun rows ->
   let n = Array.length rows in
   if n = 0 then invalid_arg "take_col: 0 rows";
@@ -107,7 +108,8 @@ let rec take: type input output.
 module Filter = struct
   type ('input,'output,'tail) f =
     | [] : ('input,'output,'output) f
-    | (::): ('input,'output) index * ('input, 'a, 'tail) f -> ('input, 'output * 'a, 'tail) f
+    | (::): ('input,'output) index * ('input, 'a, 'tail) f ->
+      ('input, ('output, 'a) p, 'tail) f
 end
 
 let rec filter: type indices t list. (list,indices,t) Filter.f -> (list * unit) Header.t -> (indices * t) Header.t =
@@ -149,7 +151,7 @@ type row = R: 'a witness * ('a * empty) Row.t -> row
 module X = struct
   let l = Header.[Int;Float]
   let row = Row.[2;3.]
-  type _ witness += K: (int * (float * empty)) witness
+  type _ witness += K: ((int,(float,empty)p)p) witness
 end
 
 let key = Key( X.K, Z)

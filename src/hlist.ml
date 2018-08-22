@@ -1,7 +1,10 @@
+
+type ('a,'b) pair = 'a -> 'b
+
 module type s = sig
   type 'a x
   type _ t =
-    | (::) : 'a x * ('b * 'tail) t -> (('a * 'b) * 'tail) t
+    | (::) : 'a x * ('b * 'tail) t -> (('a, 'b) pair * 'tail) t
     | []: ('elt*'elt) t
 end
 
@@ -10,21 +13,27 @@ type empty = Empty
 module type s' = sig
   type 'a x
   type _ t =
-    | (::) : 'a x * 'b t -> ('a * 'b) t
+    | (::) : 'a x * 'b t -> ('a, 'b) pair t
     | []: empty t
 end
 
 module type s2 = sig
   type ('a,'b) x
   type (_,_) t =
-    | (::) : ('a,'b) x * ('c,'d) t -> ('a * 'c, 'b * 'd) t
+    | (::) : ('a,'b) x * ('c,'d) t ->
+      (('a, 'c) pair, ('b, 'd) pair) t
     | []: (empty, empty) t
 end
 
-module Make(T:sig type 'a t end) = struct
+module type arg = sig
+  type 'a t
+end
+
+
+module Make(T:arg) = struct
   type 'a x = 'a T.t
   type _ t =
-    | (::) : 'a x * ('b * 'tail) t -> (('a * 'b) * 'tail) t
+    | (::) : 'a x * ('b * 'tail) t -> (('a, 'b) pair * 'tail) t
     | []: ('elt *'elt) t
   type 'b map = { map: 'a. 'a x -> 'b }
   type proj = { map: 'a. 'a x -> 'a }
@@ -40,6 +49,7 @@ module Make(T:sig type 'a t end) = struct
     fun m f l acc -> match l with
       | [] -> acc
       | a :: q -> fold_map m f q @@ f acc (m.map a)
+
   let rec append: type a b c. (a * b) t -> (b * c) t -> (a * c)t =
     fun x y -> match x with
       | a :: q -> a :: append q y
@@ -61,10 +71,10 @@ module Make(T:sig type 'a t end) = struct
 
 end
 
-module MakeS(T:sig type 'a t end) = struct
+module MakeS(T:arg) = struct
   type 'a x = 'a T.t
   type _ t =
-    | (::) : 'a x * 'b t -> ('a * 'b) t
+    | (::) : 'a x * 'b t -> ('a, 'b) pair t
     | []: empty t
   type 'b map = { map: 'a. 'a x -> 'b }
   type bin = {map: 'a. 'a x -> 'a x -> 'a x }
@@ -96,7 +106,8 @@ end
 module Make2(T:sig type ('a,'b) t end) = struct
   type ('a,'b) x = ('a,'b) T.t
   type (_,_) t =
-    | (::) : ('a,'b) x * ('c,'d) t -> ('a * 'c, 'b * 'd ) t
+    | (::) : ('a,'b) x * ('c,'d) t ->
+      (('a, 'c) pair, ('b, 'd) pair ) t
     | []: (empty , empty) t
   type 'a map = { map: 'c 'b. ('c,'b) x -> 'a }
 
@@ -151,10 +162,26 @@ module Cross2(L1:s2)(L2:s2) = struct
 
 end
 
-module CrossFst(L1:s2)(L2:s') = struct
- type t = {f:'a 'b. ('a,'b) L1.x -> 'a L2.x}
+module Cross21(L1:s2)(L2:s') = struct
+ type fst = {f:'a 'b. ('a,'b) L1.x -> 'a L2.x}
+ type 'r bin = { f: 'a 'b. ('a,'b) L1.x -> 'a L2.x -> 'r }
 
-  let rec map: type a b. t -> (a,b) L1.t -> a L2.t  =
+
+ let rec fold_map: type a b.
+   'r bin -> ('acc -> 'r -> 'acc)
+   -> 'acc -> (a,b) L1.t -> a L2.t -> 'acc =
+    fun bin merge acc a b -> match a,b with
+      | [], [] -> acc
+      | a :: q, b :: r ->
+        fold_map bin merge (merge acc (bin.f a b)) q r
+
+ let to_list p a b =
+   fold_map p (fun acc x -> x :: acc) a b
+
+ let iter p a b =
+   fold_map p (fun () () -> ()) () a b
+
+  let rec map: type a b. fst -> (a,b) L1.t -> a L2.t  =
     fun c -> function
       | [] -> []
       | a :: q -> c.f a :: map c q
