@@ -6,6 +6,7 @@ type _ typ =
   | String : (string * string array) typ
   | Char : (char * bytes) typ
 type dyntyp = Dyn : 'a typ -> dyntyp [@@unboxed]
+val pp: ('a * _) typ -> Format.formatter -> 'a -> unit
 exception Type_error
 
 
@@ -108,6 +109,7 @@ module Typed :
     val untype : ('a, 'b) t -> Frame.t
     val columns : ('a, 'b) Spec.t -> 'b Row.t -> ('a, 'b) t
     val rows : ('a, 'b) Spec.t -> 'a Row.t list -> ('a, 'b) t
+    val pp: ('a,'b) Spec.t -> Format.formatter -> 'a Row.t -> unit
   end
 
 

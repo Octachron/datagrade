@@ -1,0 +1,6 @@
+(library
+  (name example)
+  (libraries datagrade)
+  (inline_tests)
+  (preprocess (pps ppx_expect))
+)

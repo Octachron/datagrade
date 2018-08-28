@@ -5,6 +5,13 @@ type _ typ =
   | String: (string * string array) typ
   | Char: (char * bytes) typ
 
+let pp (type x y ) (ty:(x*y) typ) ppf (x:x) = match ty with
+  | Int -> Format.pp_print_int ppf x
+  | Float -> Format.pp_print_float ppf x
+  | Bool -> Format.pp_print_bool ppf x
+  | String -> Format.pp_print_string ppf x
+  | Char -> Format.pp_print_char ppf x
+
 type dyntyp = Dyn: _ typ -> dyntyp [@@unboxed]
 exception Type_error
 type ('a, 'b) eq = Refl: ('a,'a) eq
@@ -247,16 +254,6 @@ end
 
 let ( $: ) x = key x
 
-let int = "integer" $: Int
-let en = "en" $: String
-
-let dict =
-  Frame.empty
-  |> Col.add int [|0;1;2|]
-  |> Col.add en [|"0";"1";"2"|]
-
-let x = dict.Col.|[int]
-
 
 module Typed = struct
   module Cross = Hlist.Cross21(Header)(Row)
@@ -285,17 +282,20 @@ module Typed = struct
       | [],[] -> {frame with header= [] }
       | K(b,ty):: r, a :: q ->
         let frame = (add_row { frame with header=r} q).frame in
-        let col = frame.Frame.%[b] in
+        let col =
+          try frame.Frame.%[b] with Not_found ->
+            Dynarray.(A(ty,create ty 0))
+        in
         let col = Dynarray.(concat col @@ A(ty,make ty 1 a)) in
         let frame = Frame.add b col frame in
         { frame; header }
 
-  let rec blit_row frame n row =
+  let blit_row frame n row =
     Cross.iter {f = (fun k x ->
         frame.frame.Col.%(k,n) <- x
       )} frame.header row
 
-  let rec rows header rows =
+  let create_rows header rows =
       let n = List.length rows in
       let frame = Header.fold_map
           {map=(fun (K(name,ty)) ->
@@ -318,8 +318,19 @@ module Typed = struct
     promote header frame
 
   let rows spec rows =
-    let frame = promote (Col.header spec) Frame.empty in
-    List.fold_left add_row frame rows
+    let header = Col.header spec in
+    create_rows header rows
+
+  let pp spec ppf rows =
+    let rec ipp: type a b. (a,b) Spec.t -> _ -> a Row.t -> _ =
+      fun spec ppf row -> match spec, row with
+        | [], [] -> Format.fprintf ppf "]@]"
+        | (_,ty) :: ( _ :: _  as q), x :: (_ :: _ as r) ->
+          Format.fprintf ppf "%a;@ %a" (pp ty) x (ipp q) r
+        | [_,ty], [x] ->
+          Format.fprintf ppf "%a]@]"
+          (pp ty) x in
+    Format.fprintf ppf "@[[%a" (ipp spec) rows
 end
 
 type 'c case = Case: ('a,'b) Spec.t *
@@ -337,25 +348,3 @@ let rec match' frame cases default =
     match Col.indices h frame with
     | x -> f (Typed.promote x frame)
     | exception Type_error -> match' frame q default
-
-
-let header: _ Spec.t = [ "int", Int; "string", String]
-let f = Typed.columns header
-    [
-      [| 1; 2; 3 |];
-      [| "one"; "two"; "three" |]
-    ]
-
-let y = Typed.rows header
-    [
-      [1; "one"];
-      [2; "two"];
-      [3; "three"];
-
-    ]
-
-let row = match' (Typed.untype f) [
-    ["string", String; "int", Int] => fun frame ->
-      frame.Typed.%(0)
-  ]
-    (fun _ -> raise Match_failure)
